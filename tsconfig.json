@@ -1,0 +1,26 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "lib": [
+            "ESNext",
+            "DOM"
+        ],
+        "jsx": "react-native",
+        "moduleResolution": "node",
+        "strict": true,
+        "paths": {
+            "@/*": [
+                "./*"
+            ]
+        },
+        "skipLibCheck": true,
+        "resolveJsonModule": true,
+        "allowSyntheticDefaultImports": true,
+        "esModuleInterop": true
+    },
+    "include": [
+        "**/*.ts",
+        "**/*.tsx"
+    ]
+}

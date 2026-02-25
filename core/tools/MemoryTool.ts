@@ -36,13 +36,20 @@ export const MemoryToolDefinition: ToolDefinition = {
     }
 };
 
-export async function createMemoryExecutor(dbService: any) {
+export async function createMemoryExecutor(dbService: any, provider?: any) {
     return async (args: { key: string; content: string }): Promise<ToolResult> => {
         try {
             await dbService.init();
+
+            let embeddingJson = null;
+            if (provider?.createEmbedding) {
+                const vector = await provider.createEmbedding(`${args.key}: ${args.content}`);
+                embeddingJson = JSON.stringify(vector);
+            }
+
             await dbService.db.runAsync(
-                'INSERT OR REPLACE INTO memory (key, content, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
-                [args.key, args.content]
+                'INSERT OR REPLACE INTO memory (key, content, embedding, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
+                [args.key, args.content, embeddingJson]
             );
 
             return {

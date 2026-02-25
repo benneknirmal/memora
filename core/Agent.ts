@@ -7,6 +7,7 @@ import {
     LLMResponse
 } from './types';
 import { ToolRegistry } from './tools/ToolRegistry';
+import { dbService } from './storage/DatabaseService';
 
 export type OnResponseChunk = (content: string) => void;
 export type OnToolCall = (name: string, args: any) => void;
@@ -120,7 +121,34 @@ export class Agent {
 
             this.onStatus?.("Thinking...");
             const toolDefs = this.tools.getAllDefinitions();
-            const optimizedHistory = this.getOptimizedHistory();
+            let optimizedHistory = this.getOptimizedHistory();
+
+            // --- PROACTIVE MEMORY RETRIEVAL ---
+            // On the first iteration, try to pull relevant memories into the context
+            if (iteration === 1 && optimizedHistory.length > 0) {
+                try {
+                    const query = optimizedHistory[optimizedHistory.length - 1].content;
+                    if (query && typeof query === 'string') {
+                        const embedding = await this.provider.createEmbedding(query);
+                        const memories = await dbService.searchSemanticMemory(embedding, 5);
+
+                        if (memories.length > 0) {
+                            const memorySnippet = `\n\n[RELEVANT MEMORIES]:\n${memories.map((m: any) => `- ${m.key}: ${m.content}`).join('\n')}`;
+
+                            // Inject memories into the system prompt for this turn
+                            if (optimizedHistory[0].role === 'system') {
+                                optimizedHistory[0] = {
+                                    ...optimizedHistory[0],
+                                    content: (optimizedHistory[0].content || '') + memorySnippet
+                                };
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error("Memory retrieval failed:", e);
+                }
+            }
+
             const response: LLMResponse = await this.provider.chat(optimizedHistory, toolDefs);
 
             const assistantMessage: Message = {

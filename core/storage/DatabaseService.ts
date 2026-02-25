@@ -59,18 +59,23 @@ export class DatabaseService {
                     CREATE TABLE IF NOT EXISTS memory (
                         key TEXT PRIMARY KEY,
                         content TEXT,
+                        embedding TEXT,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
                 `);
 
                 // Migrations — add columns if they don't exist yet
-                const tableInfo: any[] = await this.db.getAllAsync('PRAGMA table_info(messages)');
+                const msgTableInfo: any[] = await this.db.getAllAsync('PRAGMA table_info(messages)');
+                const memTableInfo: any[] = await this.db.getAllAsync('PRAGMA table_info(memory)');
 
-                if (!tableInfo.some(col => col.name === 'embedding')) {
+                if (!msgTableInfo.some(col => col.name === 'embedding')) {
                     await this.db.execAsync('ALTER TABLE messages ADD COLUMN embedding TEXT;');
                 }
-                if (!tableInfo.some(col => col.name === 'images')) {
+                if (!msgTableInfo.some(col => col.name === 'images')) {
                     await this.db.execAsync('ALTER TABLE messages ADD COLUMN images TEXT;');
+                }
+                if (!memTableInfo.some(col => col.name === 'embedding')) {
+                    await this.db.execAsync('ALTER TABLE memory ADD COLUMN embedding TEXT;');
                 }
             } catch (error) {
                 this.initPromise = null;
@@ -204,6 +209,26 @@ export class DatabaseService {
         await this.init();
         const rows: any[] = await this.db!.getAllAsync(
             'SELECT content, role, created_at, embedding FROM messages WHERE embedding IS NOT NULL AND role IN ("user", "assistant")'
+        );
+
+        const results = rows.map(row => {
+            const rowEmbedding = JSON.parse(row.embedding);
+            const similarity = this.cosineSimilarity(queryEmbedding, rowEmbedding);
+            return { ...row, similarity };
+        });
+
+        return results
+            .sort((a, b) => b.similarity - a.similarity)
+            .slice(0, limit);
+    }
+
+    /**
+     * Search specifically within the long-term memory store.
+     */
+    async searchSemanticMemory(queryEmbedding: number[], limit: number = 8): Promise<any[]> {
+        await this.init();
+        const rows: any[] = await this.db!.getAllAsync(
+            'SELECT key, content, embedding FROM memory WHERE embedding IS NOT NULL'
         );
 
         const results = rows.map(row => {
